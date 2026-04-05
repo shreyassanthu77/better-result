@@ -25,26 +25,26 @@ const tryOrPanicAsync = async <T>(fn: () => Promise<T>, message: string): Promis
   }
 };
 
-type TaggedErrorLike = Error & { readonly _tag: string };
-type TaggedErrorFor<E> = Extract<E, TaggedErrorLike>;
+type TaggedErrorBase = Error & { readonly _tag: string };
+type TaggedErrorFor<E> = Extract<E, TaggedErrorBase>;
 
-type ErrorMatchHandlers<E extends TaggedErrorLike, R> = {
+type ErrorMatchHandlers<E extends TaggedErrorBase, R> = {
   [K in E["_tag"]]: (err: Extract<E, { _tag: K }>) => R;
 };
 
-type ErrorPartialMatchHandlers<E extends TaggedErrorLike, R> = Partial<ErrorMatchHandlers<E, R>>;
+type ErrorPartialMatchHandlers<E extends TaggedErrorBase, R> = Partial<ErrorMatchHandlers<E, R>>;
 
-type ErrorHandledTags<E extends TaggedErrorLike, H> = Extract<keyof H, E["_tag"]>;
+type ErrorHandledTags<E extends TaggedErrorBase, H> = Extract<keyof H, E["_tag"]>;
 type UnhandledTaggedErrors<E, H> = Exclude<
   TaggedErrorFor<E>,
   { _tag: NoInfer<ErrorHandledTags<TaggedErrorFor<E>, H>> }
 >;
 
-type ErrorAsyncMatchHandlers<E extends TaggedErrorLike, R> = {
+type ErrorAsyncMatchHandlers<E extends TaggedErrorBase, R> = {
   [K in E["_tag"]]: (err: Extract<E, { _tag: K }>) => Promise<R>;
 };
 
-type ErrorAsyncPartialMatchHandlers<E extends TaggedErrorLike, R> = Partial<
+type ErrorAsyncPartialMatchHandlers<E extends TaggedErrorBase, R> = Partial<
   ErrorAsyncMatchHandlers<E, R>
 >;
 
@@ -64,7 +64,7 @@ type ErrorAsyncPartialHandlersFor<E, R> = [TaggedErrorFor<E>] extends [never]
   ? never
   : ErrorAsyncPartialMatchHandlers<TaggedErrorFor<E>, R>;
 
-const matchTaggedErrorAsync = async <E extends TaggedErrorLike, R>(
+const matchTaggedErrorAsync = async <E extends TaggedErrorBase, R>(
   error: E,
   handlers: ErrorAsyncMatchHandlers<E, R>,
 ): Promise<R> => {
@@ -73,7 +73,7 @@ const matchTaggedErrorAsync = async <E extends TaggedErrorLike, R>(
 };
 
 const matchTaggedErrorPartialAsync = async <
-  E extends TaggedErrorLike,
+  E extends TaggedErrorBase,
   R,
   H extends ErrorAsyncPartialMatchHandlers<E, R>,
 >(
@@ -258,7 +258,8 @@ export class Ok<A, E = never> {
    * @param _fn Ignored.
    * @returns Self.
    */
-  tapError(_fn: (e: never) => void): Ok<A, E> {
+  tapError(errorHandler: (e: never) => void): Ok<A, E> {
+    void errorHandler;
     return this;
   }
 
@@ -268,7 +269,8 @@ export class Ok<A, E = never> {
    * @param _fn Ignored.
    * @returns Promise of self.
    */
-  tapErrorAsync(_fn: (e: never) => Promise<void>): Promise<Ok<A, E>> {
+  tapErrorAsync(errorHandler: (e: never) => Promise<void>): Promise<Ok<A, E>> {
+    void errorHandler;
     return Promise.resolve(this);
   }
 
@@ -280,7 +282,8 @@ export class Ok<A, E = never> {
    * @param _handlers Ignored.
    * @returns Self with updated phantom error type.
    */
-  matchError<E2>(_handlers: ErrorHandlersFor<E, E2>): Ok<A, E2> {
+  matchError<E2>(handlers: ErrorHandlersFor<E, E2>): Ok<A, E2> {
+    void handlers;
     // SAFETY: E is phantom on Ok (not used at runtime).
     return this as unknown as Ok<A, E2>;
   }
@@ -293,7 +296,8 @@ export class Ok<A, E = never> {
    * @param _handlers Ignored.
    * @returns Promise of self with updated phantom error type.
    */
-  matchErrorAsync<E2>(_handlers: ErrorAsyncHandlersFor<E, E2>): Promise<Ok<A, E2>> {
+  matchErrorAsync<E2>(handlers: ErrorAsyncHandlersFor<E, E2>): Promise<Ok<A, E2>> {
+    void handlers;
     // SAFETY: E is phantom on Ok (not used at runtime).
     return Promise.resolve(this as unknown as Ok<A, E2>);
   }
@@ -309,9 +313,11 @@ export class Ok<A, E = never> {
    * @returns Self with updated phantom error type.
    */
   matchErrorPartial<E2, const H extends ErrorPartialHandlersFor<E, E2>>(
-    _handlers: H,
-    _fallback: (e: UnhandledTaggedErrors<E, H>) => E2,
+    handlers: H,
+    fallback: (e: UnhandledTaggedErrors<E, H>) => E2,
   ): Ok<A, E2> {
+    void handlers;
+    void fallback;
     // SAFETY: E is phantom on Ok (not used at runtime).
     return this as unknown as Ok<A, E2>;
   }
@@ -327,9 +333,11 @@ export class Ok<A, E = never> {
    * @returns Promise of self with updated phantom error type.
    */
   matchErrorPartialAsync<E2, const H extends ErrorAsyncPartialHandlersFor<E, E2>>(
-    _handlers: H,
-    _fallback: (e: UnhandledTaggedErrors<E, H>) => Promise<E2>,
+    handlers: H,
+    fallback: (e: UnhandledTaggedErrors<E, H>) => Promise<E2>,
   ): Promise<Ok<A, E2>> {
+    void handlers;
+    void fallback;
     // SAFETY: E is phantom on Ok (not used at runtime).
     return Promise.resolve(this as unknown as Ok<A, E2>);
   }
@@ -341,7 +349,8 @@ export class Ok<A, E = never> {
    * @param _fn Ignored.
    * @returns Self with updated phantom error type.
    */
-  orElse<E2>(_fn: (e: never) => Result<A, E2>): Ok<A, E2> {
+  orElse<E2>(recovery: (e: never) => Result<A, E2>): Ok<A, E2> {
+    void recovery;
     // SAFETY: E is phantom on Ok (not used at runtime).
     return this as unknown as Ok<A, E2>;
   }
@@ -353,7 +362,8 @@ export class Ok<A, E = never> {
    * @param _fn Ignored.
    * @returns Promise of self with updated phantom error type.
    */
-  orElseAsync<E2>(_fn: (e: never) => Promise<Result<A, E2>>): Promise<Ok<A, E2>> {
+  orElseAsync<E2>(recovery: (e: never) => Promise<Result<A, E2>>): Promise<Ok<A, E2>> {
+    void recovery;
     // SAFETY: E is phantom on Ok (not used at runtime).
     return Promise.resolve(this as unknown as Ok<A, E2>);
   }
