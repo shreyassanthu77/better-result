@@ -25,22 +25,26 @@ const tryOrPanicAsync = async <T>(fn: () => Promise<T>, message: string): Promis
   }
 };
 
-type AnyTaggedError = Error & { readonly _tag: string };
-type TaggedErrorFor<E> = Extract<E, AnyTaggedError>;
+type TaggedErrorLike = Error & { readonly _tag: string };
+type TaggedErrorFor<E> = Extract<E, TaggedErrorLike>;
 
-type ErrorMatchHandlers<E extends AnyTaggedError, R> = {
+type ErrorMatchHandlers<E extends TaggedErrorLike, R> = {
   [K in E["_tag"]]: (err: Extract<E, { _tag: K }>) => R;
 };
 
-type ErrorPartialMatchHandlers<E extends AnyTaggedError, R> = Partial<ErrorMatchHandlers<E, R>>;
+type ErrorPartialMatchHandlers<E extends TaggedErrorLike, R> = Partial<ErrorMatchHandlers<E, R>>;
 
-type ErrorHandledTags<E extends AnyTaggedError, H> = Extract<keyof H, E["_tag"]>;
+type ErrorHandledTags<E extends TaggedErrorLike, H> = Extract<keyof H, E["_tag"]>;
+type UnhandledTaggedErrors<E, H> = Exclude<
+  TaggedErrorFor<E>,
+  { _tag: NoInfer<ErrorHandledTags<TaggedErrorFor<E>, H>> }
+>;
 
-type ErrorAsyncMatchHandlers<E extends AnyTaggedError, R> = {
+type ErrorAsyncMatchHandlers<E extends TaggedErrorLike, R> = {
   [K in E["_tag"]]: (err: Extract<E, { _tag: K }>) => Promise<R>;
 };
 
-type ErrorAsyncPartialMatchHandlers<E extends AnyTaggedError, R> = Partial<
+type ErrorAsyncPartialMatchHandlers<E extends TaggedErrorLike, R> = Partial<
   ErrorAsyncMatchHandlers<E, R>
 >;
 
@@ -60,7 +64,7 @@ type ErrorAsyncPartialHandlersFor<E, R> = [TaggedErrorFor<E>] extends [never]
   ? never
   : ErrorAsyncPartialMatchHandlers<TaggedErrorFor<E>, R>;
 
-const matchTaggedErrorAsync = async <E extends AnyTaggedError, R>(
+const matchTaggedErrorAsync = async <E extends TaggedErrorLike, R>(
   error: E,
   handlers: ErrorAsyncMatchHandlers<E, R>,
 ): Promise<R> => {
@@ -69,7 +73,7 @@ const matchTaggedErrorAsync = async <E extends AnyTaggedError, R>(
 };
 
 const matchTaggedErrorPartialAsync = async <
-  E extends AnyTaggedError,
+  E extends TaggedErrorLike,
   R,
   H extends ErrorAsyncPartialMatchHandlers<E, R>,
 >(
@@ -80,8 +84,9 @@ const matchTaggedErrorPartialAsync = async <
   type K = ErrorHandledTags<E, H>;
   const handler = handlers[error._tag as K];
   if (typeof handler === "function") {
+    type HandlerParameter = Parameters<NonNullable<typeof handler>>[0];
     // SAFETY: handler exists and matches the tag.
-    return handler(error as Parameters<NonNullable<typeof handler>>[0]);
+    return handler(error as HandlerParameter);
   }
   // SAFETY: If no handler matched, error is in the Exclude type.
   return fallback(error as Exclude<E, { _tag: K }>);
@@ -305,9 +310,7 @@ export class Ok<A, E = never> {
    */
   matchErrorPartial<E2, const H extends ErrorPartialHandlersFor<E, E2>>(
     _handlers: H,
-    _fallback: (
-      e: Exclude<TaggedErrorFor<E>, { _tag: NoInfer<ErrorHandledTags<TaggedErrorFor<E>, H>> }>,
-    ) => E2,
+    _fallback: (e: UnhandledTaggedErrors<E, H>) => E2,
   ): Ok<A, E2> {
     // SAFETY: E is phantom on Ok (not used at runtime).
     return this as unknown as Ok<A, E2>;
@@ -325,9 +328,7 @@ export class Ok<A, E = never> {
    */
   matchErrorPartialAsync<E2, const H extends ErrorAsyncPartialHandlersFor<E, E2>>(
     _handlers: H,
-    _fallback: (
-      e: Exclude<TaggedErrorFor<E>, { _tag: NoInfer<ErrorHandledTags<TaggedErrorFor<E>, H>> }>,
-    ) => Promise<E2>,
+    _fallback: (e: UnhandledTaggedErrors<E, H>) => Promise<E2>,
   ): Promise<Ok<A, E2>> {
     // SAFETY: E is phantom on Ok (not used at runtime).
     return Promise.resolve(this as unknown as Ok<A, E2>);
@@ -591,9 +592,7 @@ export class Err<T, E> {
    */
   matchErrorPartial<E2, const H extends ErrorPartialHandlersFor<E, E2>>(
     handlers: H,
-    fallback: (
-      e: Exclude<TaggedErrorFor<E>, { _tag: NoInfer<ErrorHandledTags<TaggedErrorFor<E>, H>> }>,
-    ) => E2,
+    fallback: (e: UnhandledTaggedErrors<E, H>) => E2,
   ): Err<T, E2> {
     return tryOrPanic(
       () =>
@@ -622,9 +621,7 @@ export class Err<T, E> {
    */
   matchErrorPartialAsync<E2, const H extends ErrorAsyncPartialHandlersFor<E, E2>>(
     handlers: H,
-    fallback: (
-      e: Exclude<TaggedErrorFor<E>, { _tag: NoInfer<ErrorHandledTags<TaggedErrorFor<E>, H>> }>,
-    ) => Promise<E2>,
+    fallback: (e: UnhandledTaggedErrors<E, H>) => Promise<E2>,
   ): Promise<Err<T, E2>> {
     return tryOrPanicAsync(
       async () =>
