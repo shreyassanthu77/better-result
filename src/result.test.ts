@@ -1271,19 +1271,23 @@ describe("Result", () => {
 
     it("Result.matchError throws Panic when handler throws", () => {
       expect(() =>
-        Result.err<number, AppError>(new NotFoundError({ id: "1", message: "missing" })).matchError({
-          NotFoundError: () => {
-            throw new Error("matchError handler failed");
+        Result.err<number, AppError>(new NotFoundError({ id: "1", message: "missing" })).matchError(
+          {
+            NotFoundError: () => {
+              throw new Error("matchError handler failed");
+            },
+            ValidationError: () => "invalid",
+            NetworkError: () => "network",
           },
-          ValidationError: () => "invalid",
-          NetworkError: () => "network",
-        }),
+        ),
       ).toThrow(Panic);
     });
 
     it("Result.matchErrorAsync throws Panic when handler rejects", async () => {
       await expect(
-        Result.err<number, AppError>(new NotFoundError({ id: "1", message: "missing" })).matchErrorAsync({
+        Result.err<number, AppError>(
+          new NotFoundError({ id: "1", message: "missing" }),
+        ).matchErrorAsync({
           NotFoundError: async () => {
             throw new Error("matchErrorAsync handler failed");
           },
@@ -1812,7 +1816,9 @@ describe("Type Inference", () => {
       class ErrorB extends TaggedError("ErrorB")<{ message: string }>() {}
 
       const r: Result<number, ErrorA> = Result.err(new ErrorA({ message: "boom" }));
-      const recovered: Result<number, ErrorB> = r.orElse(() => Result.err(new ErrorB({ message: "next" })));
+      const recovered: Result<number, ErrorB> = r.orElse(() =>
+        Result.err(new ErrorB({ message: "next" })),
+      );
 
       expect(Result.isError(recovered)).toBe(true);
       if (Result.isError(recovered)) {
