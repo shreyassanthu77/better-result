@@ -64,34 +64,6 @@ type ErrorAsyncPartialHandlersFor<E, R> = [TaggedErrorFor<E>] extends [never]
   ? never
   : ErrorAsyncPartialMatchHandlers<TaggedErrorFor<E>, R>;
 
-const matchTaggedErrorAsync = async <E extends TaggedErrorBase, R>(
-  error: E,
-  handlers: ErrorAsyncMatchHandlers<E, R>,
-): Promise<R> => {
-  const handler = handlers[error._tag as E["_tag"]];
-  return handler(error as Extract<E, { _tag: (typeof error)["_tag"] }>);
-};
-
-const matchTaggedErrorPartialAsync = async <
-  E extends TaggedErrorBase,
-  R,
-  H extends ErrorAsyncPartialMatchHandlers<E, R>,
->(
-  error: E,
-  handlers: H,
-  fallback: (e: Exclude<E, { _tag: ErrorHandledTags<E, H> }>) => Promise<R>,
-): Promise<R> => {
-  type K = ErrorHandledTags<E, H>;
-  const handler = handlers[error._tag as K];
-  if (typeof handler === "function") {
-    type HandlerParameter = Parameters<NonNullable<typeof handler>>[0];
-    // SAFETY: handler exists and matches the tag.
-    return handler(error as HandlerParameter);
-  }
-  // SAFETY: If no handler matched, error is in the Exclude type.
-  return fallback(error as Exclude<E, { _tag: K }>);
-};
-
 /**
  * Successful result variant.
  *
@@ -579,13 +551,14 @@ export class Err<T, E> {
    */
   matchErrorAsync<E2>(handlers: ErrorAsyncHandlersFor<E, E2>): Promise<Err<T, E2>> {
     return tryOrPanicAsync(
-      async () =>
-        new Err<T, E2>(
-          await matchTaggedErrorAsync(
-            this.error as TaggedErrorFor<E>,
-            handlers as ErrorAsyncMatchHandlers<TaggedErrorFor<E>, E2>,
-          ),
-        ),
+      async () => {
+        const error = this.error as TaggedErrorFor<E>;
+        const asyncHandlers = handlers as ErrorAsyncMatchHandlers<TaggedErrorFor<E>, E2>;
+        const handler = asyncHandlers[error._tag as TaggedErrorFor<E>["_tag"]];
+        return new Err<T, E2>(
+          await handler(error as Extract<TaggedErrorFor<E>, { _tag: (typeof error)["_tag"] }>),
+        );
+      },
       "matchErrorAsync handler threw",
     );
   }
@@ -634,16 +607,23 @@ export class Err<T, E> {
     fallback: (e: UnhandledTaggedErrors<E, H>) => Promise<E2>,
   ): Promise<Err<T, E2>> {
     return tryOrPanicAsync(
-      async () =>
-        new Err<T, E2>(
-          await matchTaggedErrorPartialAsync(
-            this.error as TaggedErrorFor<E>,
-            handlers as ErrorAsyncPartialMatchHandlers<TaggedErrorFor<E>, E2>,
-            fallback as (
-              e: Exclude<TaggedErrorFor<E>, { _tag: ErrorHandledTags<TaggedErrorFor<E>, H> }>,
-            ) => Promise<E2>,
-          ),
-        ),
+      async () => {
+        const error = this.error as TaggedErrorFor<E>;
+        const asyncHandlers = handlers as ErrorAsyncPartialMatchHandlers<TaggedErrorFor<E>, E2>;
+        type K = ErrorHandledTags<TaggedErrorFor<E>, H>;
+        const handler = asyncHandlers[error._tag as K];
+
+        if (typeof handler === "function") {
+          type HandlerParameter = Parameters<NonNullable<typeof handler>>[0];
+          return new Err<T, E2>(await handler(error as HandlerParameter));
+        }
+
+        return new Err<T, E2>(
+          await (
+            fallback as (e: Exclude<TaggedErrorFor<E>, { _tag: K }>) => Promise<E2>
+          )(error as Exclude<TaggedErrorFor<E>, { _tag: K }>),
+        );
+      },
       "matchErrorPartialAsync handler threw",
     );
   }
