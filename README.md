@@ -97,11 +97,16 @@ Result.map((x) => x + 1)(result); // Pipeable
 // Transform error type
 const result = fetchUser(id).mapError((e) => new AppError(`Failed to fetch user: ${e.message}`));
 
-// Recover from specific errors
-const result = fetchUser(id).match({
-  ok: (user) => Result.ok(user),
-  err: (e) => (e._tag === "NotFoundError" ? Result.ok(defaultUser) : Result.err(e)),
-});
+// Handle tagged errors fluently
+const result = fetchUser(id)
+  .tapError((e) => logger.warn(e))
+  .matchErrorPartial(
+    {
+      NotFoundError: () => new AppError("missing user"),
+    },
+    (e) => e,
+  )
+  .orElse((e) => (e._tag === "NotFoundError" ? Result.ok(defaultUser) : Result.err(e)));
 ```
 
 ## Extracting Values
